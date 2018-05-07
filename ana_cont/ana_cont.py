@@ -1,7 +1,7 @@
 import sys
 import numpy as np
-from src import precomp
-from src import pade
+import precomp
+import pade
 import scipy.optimize as opt
 import matplotlib.pyplot as plt
 import os
@@ -33,15 +33,19 @@ class AnalyticContinuationProblem(object):
             self.re_axis=re_axis*beta
             self.im_data=im_data
             self.beta=beta
+        elif self.kernel_mode=='time_bosonic':
+            self.im_axis=im_axis/beta
+            self.re_axis=re_axis*beta
+            self.im_data=im_data
+            self.beta=beta
 
-    
 
     def solve(self,method='',**kwargs):
         if method=='maxent_svd':
             self.solver=MaxentSolverSVD(self.im_axis,self.re_axis,self.im_data,kernel_mode=self.kernel_mode,model=kwargs['model'],stdev=kwargs['stdev'])
             sol=self.solver.solve(alpha_determination=kwargs['alpha_determination'])
             # TODO implement a postprocessing method, where the following should be done more carefully
-            if self.kernel_mode=='time_fermionic':
+            if self.kernel_mode=='time_fermionic' or self.kernel_mode=='time_bosonic' :
                 sol[0].A_opt*=self.beta
             elif self.kernel_mode=='freq_fermionic':
                 bt=sol[0].backtransform
@@ -154,6 +158,13 @@ class MaxentSolverSVD(AnalyticContinuationSolver):
             self.niw=self.im_axis.shape[0]
             self.kernel=(np.cosh(self.im_axis[:,None]*self.re_axis[None,:]) 
                           +np.cosh((1.-self.im_axis[:,None])*self.re_axis[None,:])) / (1.+np.cosh(self.re_axis[None,:]))
+        elif self.kernel_mode=='time_bosonic':
+            self.var=stdev**2
+            self.E=1./self.var
+            self.niw=self.im_axis.shape[0]
+            self.kernel= 0.5 * self.re_axis[None,:] * (np.exp(-self.im_axis[:,None]*self.re_axis[None,:]) + \
+                                                       np.exp(-self.re_axis[None,:] * (1. - self.im_axis[:,None])))\
+                         /(1. - np.exp(-self.re_axis[None,:]))
         else:
             print 'Unknown kernel'
             sys.exit()
