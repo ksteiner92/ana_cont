@@ -38,7 +38,7 @@ setup(
                              sources = ['ana_cont/pade.c'], \
                              libraries=['m'], \
                              include_dirs=[numpy.get_include()])],
-    install_requires=['numpy', 'scipy'],
+    install_requires=['numpy', 'scipy', 'Cython'],
     setup_requires=['Cython'],
     include_package_data=True,
     zip_safe=False)

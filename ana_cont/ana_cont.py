@@ -16,6 +16,11 @@ class AnalyticContinuationProblem(object):
         self.im_data=im_data
         if self.kernel_mode=='freq_bosonic':
             pass # not necessary to do anything additionally here
+        elif self.kernel_mode=='time_bosonic':
+            self.im_axis=im_axis/beta
+            self.re_axis=re_axis*beta
+            self.im_data=im_data*beta
+            self.beta=beta
         elif self.kernel_mode=='freq_fermionic':
             self.im_data=np.concatenate((im_data.real,im_data.imag))
         elif self.kernel_mode=='freq_fermionic_phsym':
@@ -33,11 +38,7 @@ class AnalyticContinuationProblem(object):
             self.re_axis=re_axis*beta
             self.im_data=im_data
             self.beta=beta
-        elif self.kernel_mode=='time_bosonic':
-            self.im_axis=im_axis/beta
-            self.re_axis=re_axis*beta
-            self.im_data=im_data
-            self.beta=beta
+
 
 
     def solve(self,method='',**kwargs):
@@ -45,18 +46,21 @@ class AnalyticContinuationProblem(object):
             self.solver=MaxentSolverSVD(self.im_axis,self.re_axis,self.im_data,kernel_mode=self.kernel_mode,model=kwargs['model'],stdev=kwargs['stdev'])
             sol=self.solver.solve(alpha_determination=kwargs['alpha_determination'])
             # TODO implement a postprocessing method, where the following should be done more carefully
-            if self.kernel_mode=='time_fermionic' or self.kernel_mode=='time_bosonic' :
+            if self.kernel_mode=='time_fermionic':
                 sol[0].A_opt*=self.beta
             elif self.kernel_mode=='freq_fermionic':
                 bt=sol[0].backtransform
                 n=bt.shape[0]/2
                 sol[0].backtransform=bt[:n]+1j*bt[n:]
+            elif self.kernel_mode=='time_bosonic':
+                sol[0].A_opt*=self.beta
+                sol[0].backtransform/=self.beta
             return sol
         if method=='maxent_mc':
             raise NotImplementedError
         if method=='pade':
             self.solver=PadeSolver(im_axis=self.im_axis,re_axis=self.re_axis,im_data=self.im_data)
-            return solver.solve()
+            return self.solver.solve()
 
     def error_propagation(self,obs,args):
         return self.solver.error_propagation(obs,args)
@@ -131,8 +135,14 @@ class MaxentSolverSVD(AnalyticContinuationSolver):
             self.kernel=(self.re_axis**2)[None,:]/((self.re_axis**2)[None,:]+(self.im_axis**2)[:,None])
             self.kernel[0,0]=1. # analytically with de l'Hospital
         elif self.kernel_mode=='time_bosonic':
-            print 'Kernel not implemented'
-            sys.exit()
+            self.var=stdev**2
+            self.E=1./self.var
+            self.niw=self.im_axis.shape[0]
+            self.kernel=0.5*self.re_axis[None,:]*(
+                    np.exp(-self.re_axis[None,:]*self.im_axis[:,None])
+                    +np.exp(-self.re_axis[None,:]*(1.-self.im_axis[:,None])))/(
+                                1.-np.exp(-self.re_axis[None,:]))
+            self.kernel[:,0]=1. # analytically with de l'Hospital
         elif self.kernel_mode=='freq_fermionic':
             self.var=np.concatenate((stdev**2,stdev**2))
             self.E=1./self.var
@@ -156,15 +166,8 @@ class MaxentSolverSVD(AnalyticContinuationSolver):
             self.var=stdev**2
             self.E=1./self.var
             self.niw=self.im_axis.shape[0]
-            self.kernel=(np.cosh(self.im_axis[:,None]*self.re_axis[None,:]) 
-                          +np.cosh((1.-self.im_axis[:,None])*self.re_axis[None,:])) / (1.+np.cosh(self.re_axis[None,:]))
-        elif self.kernel_mode=='time_bosonic':
-            self.var=stdev**2
-            self.E=1./self.var
-            self.niw=self.im_axis.shape[0]
-            self.kernel= 0.5 * self.re_axis[None,:] * (np.exp(-self.im_axis[:,None]*self.re_axis[None,:]) + \
-                                                       np.exp(-self.re_axis[None,:] * (1. - self.im_axis[:,None])))\
-                         /(1. - np.exp(-self.re_axis[None,:]))
+            self.kernel=(np.cosh(self.im_axis[:,None]*self.re_axis[None,:])
+                         +np.cosh((1.-self.im_axis[:,None])*self.re_axis[None,:])) / (1.+np.cosh(self.re_axis[None,:]))
         else:
             print 'Unknown kernel'
             sys.exit()
@@ -268,8 +271,8 @@ class MaxentSolverSVD(AnalyticContinuationSolver):
     # Bayesian a-posteriori probability for alpha after optimization of A
     def posterior_probability(self,A,alpha,entr,chisq):
         lambda_matrix=np.sqrt(A/self.dw)[:,None]*self.d2chi2*np.sqrt(A/self.dw)[None,:]
-        lam=np.linalg.eigvalsh(lambda_matrix) 
-        eig_sum=np.sum(np.log(alpha/(alpha+lam))) 
+        lam=np.linalg.eigvalsh(lambda_matrix)
+        eig_sum=np.sum(np.log(alpha/(alpha+lam)))
         log_prob= alpha*entr - 0.5*chisq + np.log(alpha) + 0.5*eig_sum
         return np.exp(log_prob)
 
@@ -281,7 +284,7 @@ class MaxentSolverSVD(AnalyticContinuationSolver):
                      jac=True, # already self.compute_f_J returns the jacobian (slightly more efficient in this case)
                      options={'maxiter':iterfac*self.n_sv, # max number of lm steps
                               'factor':100., # scale for initial stepwidth of lm (?)
-                               'diag':np.exp(np.arange(self.n_sv))}, # scale for values to find (assume that they decay exponentially)
+                              'diag':np.exp(np.arange(self.n_sv))}, # scale for values to find (assume that they decay exponentially)
                      args=(alpha)) # additional argument for self.compute_f_J
         u_opt=sol.x
         A_opt=self.singular2realspace(sol.x)
@@ -311,9 +314,9 @@ class MaxentSolverSVD(AnalyticContinuationSolver):
 
     # classic maxent uses Bayes statistics to approximately determine
     # the most probable value of alpha
-    # We start at a large value of alpha, where the optimization yields basically the default model, 
+    # We start at a large value of alpha, where the optimization yields basically the default model,
     # therefore u_opt is only a few steps away from ustart=0 (=default model)
-    # Then we gradually decrease alpha, step by step moving away from the default model towards the evidence. 
+    # Then we gradually decrease alpha, step by step moving away from the default model towards the evidence.
     # Using u_opt as ustart for the next (smaller) alpha brings a great speedup into this procedure.
     def solve_classic(self): # classic maxent
         print 'Solving...'
@@ -324,7 +327,7 @@ class MaxentSolverSVD(AnalyticContinuationSolver):
         conv=0.
         while conv<1:
             o=self.maxent_optimization(alpha,self.ustart)
-            
+
             ustart=o.u_opt
             optarr.append(o)
             alpha/=10.
@@ -339,32 +342,29 @@ class MaxentSolverSVD(AnalyticContinuationSolver):
         alphaOpt=10**expOpt
         print 'prediction for optimal alpha:',alphaOpt,'log10(alphaOpt)=',np.log10(alphaOpt)
 
-        # Starting from the predicted value, we find the optimal alpha by newton's root finding method.
 
-        # the passing of ustart via saving to disk is very ugly, 
-        # but it works, and I can't think of anything better at the moment.
-        def root_fun(alpha):
-            ustart=np.load('ustart.npy')
-            res=self.maxent_optimization(alpha,ustart,iterfac=100000)
+        # Starting from the predicted value of alpha, and starting the optimization at the solution for the next-lowest alpha,
+        # we find the optimal alpha by newton's root finding method.
+
+        def root_fun(alpha,u0): # this function is just for the newton root-finding
+            res=self.maxent_optimization(alpha,u0,iterfac=100000)
             optarr.append(res)
-            np.save('ustart',res.u_opt)
+            u0[:]=res.u_opt
             return res.convergence-1.
 
-        np.save('ustart',optarr[-2].u_opt)
-        alpha_opt=opt.newton(root_fun,alphaOpt,tol=1e-6)
+        ustart=optarr[-2].u_opt
+        alpha_opt=opt.newton(root_fun,alphaOpt,tol=1e-6,args=(ustart,))
         print 'final optimal alpha:',alpha_opt,'log10(alpha_opt)=',np.log10(alpha_opt)
 
-        ustart=np.load('ustart.npy')
         sol=self.maxent_optimization(alpha_opt,ustart,iterfac=250000)
-        os.remove('ustart.npy')
         self.alpha_opt=alpha_opt
         self.A_opt=sol.A_opt
         return sol,optarr
 
 
-    # Bryan's maxent calculates an average of spectral functions, 
+    # Bryan's maxent calculates an average of spectral functions,
     # weighted by their Bayesian probability
-    def solve_bryan(self,alphastart=500,alphadiv=1.1): 
+    def solve_bryan(self,alphastart=500,alphadiv=1.1):
         print 'Solving...'
         optarr=[]
         alpha=alphastart
@@ -444,7 +444,7 @@ class GreensFunction(object):
             if self.wmin<0.:
                 print 'warning: wmin<0 not permitted for bosonic (antisymmetric) spectrum.'
             m=2.*self.dw[:,None]*self.wgrid[None,:]*self.spectrum[:,None]/(self.wgrid[None,:]**2 - self.wgrid[:,None]**2)
-        
+
         elif self.kind=='fermionic' or self.kind=='general':
             m=self.dw[:,None]*self.spectrum[:,None]/(self.wgrid[None,:]-self.wgrid[:,None])
 
@@ -452,5 +452,4 @@ class GreensFunction(object):
         self.g_real=np.sum(m,axis=0)
         self.g_imag=-self.spectrum*np.pi
         return self.g_real + 1j*self.g_imag
-
 
