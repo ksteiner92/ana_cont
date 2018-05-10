@@ -386,9 +386,6 @@ class MaxentSolverSVD(AnalyticContinuationSolver):
         probarr=np.array([o.probability for o in optarr])
         specarr=np.array([o.A_opt for o in optarr])
         probarr/=-np.trapz(probarr,alpharr) # normalize the probability distribution
-        fig=plt.figure()
-        plt.plot(np.log10(alpharr),probarr)
-        fig.show()
 
         # calculate the weighted average spectrum
         A_opt=-np.trapz(specarr*probarr[:,None],alpharr,axis=0) # need a "-" sign, because alpha goes from large to small.
