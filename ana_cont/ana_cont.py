@@ -43,7 +43,7 @@ class AnalyticContinuationProblem(object):
 
     def solve(self,method='',**kwargs):
         if method=='maxent_svd':
-            self.solver=MaxentSolverSVD(self.im_axis,self.re_axis,self.im_data,kernel_mode=self.kernel_mode,model=kwargs['model'],stdev=kwargs['stdev'])
+            self.solver=MaxentSolverSVD(self.im_axis,self.re_axis,self.im_data,kernel_mode=self.kernel_mode, **kwargs)
             sol=self.solver.solve(alpha_determination=kwargs['alpha_determination'])
             # TODO implement a postprocessing method, where the following should be done more carefully
             if self.kernel_mode=='time_fermionic':
@@ -127,7 +127,13 @@ class MaxentSolverSVD(AnalyticContinuationSolver):
         self.wmax=self.re_axis[-1]
         self.dw=np.diff(np.concatenate(([self.wmin],(self.re_axis[1:]+self.re_axis[:-1])/2.,[self.wmax])))
         self.model=model # the model should be normalized by the user himself
-
+        self.verbose = True
+        if "verbose" in kwargs:
+	    self.verbose = kwargs["verbose"]
+        if "label" in kwargs:
+	    self.label = kwargs["label"]
+        else:
+	    self.label = ""
         if self.kernel_mode=='freq_bosonic':
             self.var=stdev**2
             self.E=1./self.var
@@ -180,12 +186,13 @@ class MaxentSolverSVD(AnalyticContinuationSolver):
         self.V_svd=np.array(Vt[:self.n_sv,:].T,dtype=np.float64,order='C') # numpy.svd returns V.T
         self.Xi_svd=S[:self.n_sv]
 
-        print 'spectral points:',self.nw
-        print 'data points on imaginary axis:',self.niw
-        print 'significant singular values:',self.n_sv
-        print 'U',self.U_svd.shape
-        print 'V',self.V_svd.shape
-        print 'Xi',self.Xi_svd.shape
+        if self.verbose:
+             print self.label, 'spectral points:',self.nw
+             print self.label, 'data points on imaginary axis:',self.niw
+             print self.label, 'significant singular values:',self.n_sv
+             print self.label, 'U',self.U_svd.shape
+             print self.label, 'V',self.V_svd.shape
+             print self.label, 'Xi',self.Xi_svd.shape
 
 
 
@@ -194,7 +201,8 @@ class MaxentSolverSVD(AnalyticContinuationSolver):
         # The precomputation of W2 is done in C, this saves a lot of time!
         # The other precomputations need less loop, can stay in python for the moment.
         #=============================================================================================
-        print  'Precomputation of coefficient matrices'
+        if self.verbose:
+            print  self.label, 'Precomputation of coefficient matrices'
 
         # allocate space
         self.W2=np.zeros((self.n_sv,self.nw),order='C',dtype=np.float64)
@@ -292,7 +300,8 @@ class MaxentSolverSVD(AnalyticContinuationSolver):
         chisq=self.chi2(A_opt)
         ng,tr,conv=self.bayes_conv(A_opt,entr,alpha)
         norm=np.trapz(A_opt,self.re_axis)
-        print 'log10(alpha)={:6.4f}\tchi2={:5.4e}\tS={:5.4e}\ttr={:5.4f}\tconv={:1.3},\tnfev={},\tnorm={}'.format(np.log10(alpha),chisq,entr,tr,conv,sol.nfev,norm)
+        if self.verbose:
+            print self.label, 'log10(alpha)={:6.4f}\tchi2={:5.4e}\tS={:5.4e}\ttr={:5.4f}\tconv={:1.3},\tnfev={},\tnorm={}'.format(np.log10(alpha),chisq,entr,tr,conv,sol.nfev,norm)
         result=OptimizationResult()
         result.u_opt=u_opt
         result.A_opt=A_opt
@@ -319,7 +328,8 @@ class MaxentSolverSVD(AnalyticContinuationSolver):
     # Then we gradually decrease alpha, step by step moving away from the default model towards the evidence.
     # Using u_opt as ustart for the next (smaller) alpha brings a great speedup into this procedure.
     def solve_classic(self): # classic maxent
-        print 'Solving...'
+        if self.verbose:
+	    print 'Solving...'
         optarr=[]
         alpha=10**5
         self.ustart=np.zeros((self.n_sv))
@@ -340,7 +350,8 @@ class MaxentSolverSVD(AnalyticContinuationSolver):
         # based on this we can predict the optimal alpha quite precisely.
         expOpt=np.log10(alpharr[-2])-np.log10(bayes_conv[-2])*(np.log10(alpharr[-1])-np.log10(alpharr[-2]))/(np.log10(bayes_conv[-1])-np.log10(bayes_conv[-2]))
         alphaOpt=10**expOpt
-        print 'prediction for optimal alpha:',alphaOpt,'log10(alphaOpt)=',np.log10(alphaOpt)
+        if self.verbose:
+            print 'prediction for optimal alpha:',alphaOpt,'log10(alphaOpt)=',np.log10(alphaOpt)
 
 
         # Starting from the predicted value of alpha, and starting the optimization at the solution for the next-lowest alpha,
@@ -354,7 +365,8 @@ class MaxentSolverSVD(AnalyticContinuationSolver):
 
         ustart=optarr[-2].u_opt
         alpha_opt=opt.newton(root_fun,alphaOpt,tol=1e-6,args=(ustart,))
-        print 'final optimal alpha:',alpha_opt,'log10(alpha_opt)=',np.log10(alpha_opt)
+        if self.verbose:
+            print 'final optimal alpha:',alpha_opt,'log10(alpha_opt)=',np.log10(alpha_opt)
 
         sol=self.maxent_optimization(alpha_opt,ustart,iterfac=250000)
         self.alpha_opt=alpha_opt
@@ -365,7 +377,8 @@ class MaxentSolverSVD(AnalyticContinuationSolver):
     # Bryan's maxent calculates an average of spectral functions,
     # weighted by their Bayesian probability
     def solve_bryan(self,alphastart=500,alphadiv=1.1):
-        print 'Solving...'
+        if self.verbose:
+            print self.label, 'Solving...'
         optarr=[]
         alpha=alphastart
         self.ustart=np.zeros((self.n_sv))
