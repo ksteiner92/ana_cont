@@ -37,7 +37,7 @@ class PadeSolver(AnalyticContinuationSolver):
 class MaxentSolverSVD(AnalyticContinuationSolver):
     def __init__(self, im_axis, re_axis, im_data,
                  kernel_mode='', model=None, stdev=None,
-                 beta=None, **kwargs):
+                 beta=None, cov=None, **kwargs):
         self.kernel_mode = kernel_mode
         self.im_axis = im_axis
         self.re_axis = re_axis
@@ -50,7 +50,10 @@ class MaxentSolverSVD(AnalyticContinuationSolver):
                             (self.re_axis[1:] + self.re_axis[:-1]) / 2.,
                             [self.wmax])))
         self.model = model  # the model should be normalized by the user himself
-
+        U = None
+        if cov:
+            sig, U = np.linalg.eig(cov)
+            stdev = sig
         if self.kernel_mode == 'freq_bosonic':
             self.var = stdev ** 2
             self.E = 1. / self.var
@@ -101,6 +104,13 @@ class MaxentSolverSVD(AnalyticContinuationSolver):
         else:
             print('Unknown kernel')
             sys.exit()
+
+        # Found a covariant matrix, therefore diagonalize it
+        if cov:
+            UT = np.linalg.inv(U)
+            print(kernel.shape)
+            self.kernel = np.matmul(UT, self.kernel)
+            self.im_data = np.matmul(UT, self.im_data.T).T
 
         U, S, Vt = np.linalg.svd(self.kernel, full_matrices=False)
 
