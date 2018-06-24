@@ -50,6 +50,9 @@ class MaxentSolverSVD(AnalyticContinuationSolver):
                             (self.re_axis[1:] + self.re_axis[:-1]) / 2.,
                             [self.wmax])))
         self.model = model  # the model should be normalized by the user himself
+        self.verbose = True
+        if "verbose" in kwargs:
+           self.verbose = kwargs["verbose"]
         U = None
         UT = None
         if not cov is None:
@@ -91,14 +94,16 @@ class MaxentSolverSVD(AnalyticContinuationSolver):
             self.kernel = np.exp(-self.im_axis[:, None] * self.re_axis[None, :]) \
                           / (1. + np.exp(-self.re_axis[None, :]))
         elif self.kernel_mode == 'freq_fermionic_phsym':  # in this case, the data must be purely real (the imaginary part!)
-            print('Warning: phsym kernels do not give good results in this implementation. ')
+            if self.verbose:
+               print('Warning: phsym kernels do not give good results in this implementation. ')
             self.var = stdev ** 2
             self.E = 1. / self.var
             self.niw = self.im_axis.shape[0]
             self.kernel = -2. * self.im_axis[:, None] \
                           / ((self.im_axis ** 2)[:, None] + (self.re_axis ** 2)[None, :])
         elif self.kernel_mode == 'time_fermionic_phsym':
-            print('Warning: phsym kernels do not give good results in this implementation. ')
+            if self.verbose:
+               print('Warning: phsym kernels do not give good results in this implementation. ')
             self.var = stdev ** 2
             self.E = 1. / self.var
             self.niw = self.im_axis.shape[0]
@@ -106,7 +111,8 @@ class MaxentSolverSVD(AnalyticContinuationSolver):
                            + np.cosh((1. - self.im_axis[:, None]) * self.re_axis[None, :])) / (
                           1. + np.cosh(self.re_axis[None, :]))
         else:
-            print('Unknown kernel')
+            if self.verbose:
+               print('Unknown kernel')
             sys.exit()
 
         # Found a covariant matrix, therefore diagonalize it
@@ -125,19 +131,21 @@ class MaxentSolverSVD(AnalyticContinuationSolver):
         self.V_svd = np.array(Vt[:self.n_sv, :].T, dtype=np.float64, order='C')  # numpy.svd returns V.T
         self.Xi_svd = S[:self.n_sv]
 
-        print('spectral points:', self.nw)
-        print('data points on imaginary axis:', self.niw)
-        print('significant singular values:', self.n_sv)
-        print('U', self.U_svd.shape)
-        print('V', self.V_svd.shape)
-        print('Xi', self.Xi_svd.shape)
+        if self.verbose:
+           print('spectral points:', self.nw)
+           print('data points on imaginary axis:', self.niw)
+           print('significant singular values:', self.n_sv)
+           print('U', self.U_svd.shape)
+           print('V', self.V_svd.shape)
+           print('Xi', self.Xi_svd.shape)
 
         # =============================================================================================
         # First, precompute as much as possible
         # The precomputation of W2 is done in C, this saves a lot of time!
         # The other precomputations need less loop, can stay in python for the moment.
         # =============================================================================================
-        print('Precomputation of coefficient matrices')
+        if self.verbose:
+           print('Precomputation of coefficient matrices')
 
         # allocate space
         self.W2 = np.zeros((self.n_sv, self.nw), order='C', dtype=np.float64)
@@ -234,7 +242,8 @@ class MaxentSolverSVD(AnalyticContinuationSolver):
         chisq = self.chi2(A_opt)
         ng, tr, conv = self.bayes_conv(A_opt, entr, alpha)
         norm = np.trapz(A_opt, self.re_axis)
-        print('log10(alpha)={:6.4f}\tchi2={:5.4e}\tS={:5.4e}\ttr={:5.4f}\tconv={:1.3},\tnfev={},\tnorm={}'.format(
+        if self.verbose:
+           print('log10(alpha)={:6.4f}\tchi2={:5.4e}\tS={:5.4e}\ttr={:5.4f}\tconv={:1.3},\tnfev={},\tnorm={}'.format(
             np.log10(alpha), chisq, entr, tr, conv, sol.nfev, norm))
         result = OptimizationResult()
         result.u_opt = u_opt
@@ -262,7 +271,8 @@ class MaxentSolverSVD(AnalyticContinuationSolver):
     # Then we gradually decrease alpha, step by step moving away from the default model towards the evidence.
     # Using u_opt as ustart for the next (smaller) alpha brings a great speedup into this procedure.
     def solve_classic(self):  # classic maxent
-        print('Solving...')
+        if self.verbose:
+           print('Solving...')
         optarr = []
         alpha = 10 ** 5
         self.ustart = np.zeros((self.n_sv))
@@ -286,7 +296,8 @@ class MaxentSolverSVD(AnalyticContinuationSolver):
                                                - np.log10(alpharr[-2])) \
                    / (np.log10(bayes_conv[-1]) - np.log10(bayes_conv[-2]))
         alphaOpt = 10 ** expOpt
-        print('prediction for optimal alpha:', alphaOpt, 'log10(alphaOpt)=', np.log10(alphaOpt))
+        if self.verbose:
+           print('prediction for optimal alpha:', alphaOpt, 'log10(alphaOpt)=', np.log10(alphaOpt))
 
         # Starting from the predicted value of alpha, and starting the optimization at the solution for the next-lowest alpha,
         # we find the optimal alpha by newton's root finding method.
@@ -299,7 +310,8 @@ class MaxentSolverSVD(AnalyticContinuationSolver):
 
         ustart = optarr[-2].u_opt
         alpha_opt = opt.newton(root_fun, alphaOpt, tol=1e-6, args=(ustart,))
-        print('final optimal alpha:', alpha_opt, 'log10(alpha_opt)=', np.log10(alpha_opt))
+        if self.verbose:
+           print('final optimal alpha:', alpha_opt, 'log10(alpha_opt)=', np.log10(alpha_opt))
 
         sol = self.maxent_optimization(alpha_opt, ustart, iterfac=250000)
         self.alpha_opt = alpha_opt
@@ -309,7 +321,8 @@ class MaxentSolverSVD(AnalyticContinuationSolver):
     # Bryan's maxent calculates an average of spectral functions,
     # weighted by their Bayesian probability
     def solve_bryan(self, alphastart=500, alphadiv=1.1):
-        print('Solving...')
+        if self.verbose:
+           print('Solving...')
         optarr = []
         alpha = alphastart
         self.ustart = np.zeros((self.n_sv))
