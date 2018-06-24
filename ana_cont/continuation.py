@@ -39,10 +39,16 @@ class AnalyticContinuationProblem(object):
 
     def solve(self, method='', **kwargs):
         if method == 'maxent_svd':
+            stdev = None
+            cov = None
+            if 'stdev' in kwargs:
+                stdev = kwargs['stdev']
+            if 'cov' in kwargs:
+                cov = kwargs['cov']
             self.solver = solvers.MaxentSolverSVD(
                 self.im_axis, self.re_axis, self.im_data,
                 kernel_mode = self.kernel_mode, model = kwargs['model'],
-                stdev = kwargs['stdev'])
+                stdev=stdev, cov=cov)
             sol = self.solver.solve(alpha_determination = kwargs['alpha_determination'])
             # TODO implement a postprocessing method, where the following should be done more carefully
             if self.kernel_mode == 'time_fermionic':

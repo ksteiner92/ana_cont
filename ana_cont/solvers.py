@@ -51,9 +51,13 @@ class MaxentSolverSVD(AnalyticContinuationSolver):
                             [self.wmax])))
         self.model = model  # the model should be normalized by the user himself
         U = None
-        if cov:
-            sig, U = np.linalg.eig(cov)
-            stdev = sig
+        UT = None
+        if not cov is None:
+            sig, U = np.linalg.eigh(cov)
+            U = U.T
+            UT = np.linalg.inv(U)
+            S = np.matmul(np.matmul(UT, cov), U)
+            stdev = np.sqrt(np.real(S.diagonal()))
         if self.kernel_mode == 'freq_bosonic':
             self.var = stdev ** 2
             self.E = 1. / self.var
@@ -106,12 +110,13 @@ class MaxentSolverSVD(AnalyticContinuationSolver):
             sys.exit()
 
         # Found a covariant matrix, therefore diagonalize it
-        if cov:
-            UT = np.linalg.inv(U)
-            print(kernel.shape)
+        if not cov is None:
             self.kernel = np.matmul(UT, self.kernel)
             self.im_data = np.matmul(UT, self.im_data.T).T
-
+            if 'time' in kernel_mode:
+                self.kernel = self.kernel.real
+                self.im_data = self.im_data.real
+        U = None
         U, S, Vt = np.linalg.svd(self.kernel, full_matrices=False)
 
         self.n_sv = np.arange(min(self.nw, self.niw))[S > 1e-10][-1]  # number of singular values larger than 1e-10
