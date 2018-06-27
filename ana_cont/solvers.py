@@ -37,7 +37,7 @@ class PadeSolver(AnalyticContinuationSolver):
 class MaxentSolverSVD(AnalyticContinuationSolver):
     def __init__(self, im_axis, re_axis, im_data,
                  kernel_mode='', model=None, stdev=None,
-                 beta=None, cov=None, **kwargs):
+                 beta=None, cov=None, verbose=True):
         self.kernel_mode = kernel_mode
         self.im_axis = im_axis
         self.re_axis = re_axis
@@ -50,9 +50,7 @@ class MaxentSolverSVD(AnalyticContinuationSolver):
                             (self.re_axis[1:] + self.re_axis[:-1]) / 2.,
                             [self.wmax])))
         self.model = model  # the model should be normalized by the user himself
-        self.verbose = True
-        if "verbose" in kwargs:
-           self.verbose = kwargs["verbose"]
+        self.verbose = verbose 
         U = None
         UT = None
         if not cov is None:
