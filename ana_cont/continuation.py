@@ -42,16 +42,19 @@ class AnalyticContinuationProblem(object):
             stdev = None
             cov = None
             verbose = True
+            label = ""
             if 'stdev' in kwargs:
                 stdev = kwargs['stdev']
             if 'cov' in kwargs:
                 cov = kwargs['cov']
             if 'verbose' in kwargs:
                 verbose = kwargs['verbose']
+            if 'label' in kwargs:
+                label = kwargs['label']
             self.solver = solvers.MaxentSolverSVD(
                 self.im_axis, self.re_axis, self.im_data,
                 kernel_mode = self.kernel_mode, model = kwargs['model'],
-                stdev=stdev, cov=cov, verbose=verbose)
+                stdev=stdev, cov=cov, verbose=verbose, label=label)
             sol = self.solver.solve(alpha_determination = kwargs['alpha_determination'])
             # TODO implement a postprocessing method, where the following should be done more carefully
             if self.kernel_mode == 'time_fermionic':
